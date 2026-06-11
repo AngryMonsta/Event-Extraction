@@ -11,6 +11,24 @@ This repository contains the local pipeline and supporting code used to extract 
 - A CUDA-capable GPU with more than 16 GB of VRAM is strongly recommended for running the local Gemma 4 extraction pipeline
 - A Hugging Face account and User Access Token if you plan to download gated models or private checkpoints
 
+## Input Data Acquisition
+
+### Nexis Uni Power Search Query
+
+News articles are sourced from Nexis Uni using the following search parameters:
+
+**Search Query:**
+```
+Coastal:"dar es salaam" OR "mafia marine park" OR "mafia island" OR (muheza OR tanga OR pangani OR bagamoyo OR mkuranga OR rufiji OR kilwa OR zanzibar OR pemba OR lindi OR mtwara OR tanzania OR tanzanian) AND "exclusive economic zone" OR "territorial waters" OR (coast OR coastline OR coastal OR beach OR island) AND (fish OR fishery OR fisheries OR fisherman OR fishermen OR fisherfolk OR aquaculture OR fishmonger OR mammies OR seine OR cockle)
+```
+
+**Query Parameters:**
+- **Time Frame:** 1990 - 2017
+- **Exclusion:** "dispute"
+
+**Download Instructions:**
+Download the first 20 news articles from the Nexis Uni search results and save them to `src/proto_data/raw/`.
+
 ## Environment Setup
 
 1. Clone the repository:
