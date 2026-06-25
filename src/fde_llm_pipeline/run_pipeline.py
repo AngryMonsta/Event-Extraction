@@ -21,12 +21,23 @@ Usage
     # Minimal — ZIP input, auto device
     python run_pipeline.py \\
         --zip       data/Somalia.ZIP \\
-        --output    results/
+        --output    ../results/
+        
+    # Single raw article string supplied inline on the CLI
+    python run_pipeline.py \\
+        --string    "Kenya coastguard arrested 12 Somali fishers near Lamu on 3 March 2005..." \\
+        --output    ../results/
+ 
+    # Batch of raw strings from a JSON file  (array of strings, or array of
+    # {"doc_id": "...", "text": "..."} objects for explicit IDs)
+    python run_pipeline.py \\
+        --strings-json  data/articles.json \\
+        --output        ../results/
 
     # Full control
     python run_pipeline.py \\
         --zip           data/Somalia.ZIP \\
-        --output        results/ \\
+        --output        ../results/ \\
         --model         google/gemma-4-E4B-it \\
         --device        cuda:0 \\
         --device-map-mode single \\
@@ -43,21 +54,21 @@ Usage
     # Skip extraction (articles already in results/stage0/)
     python run_pipeline.py \\
         --folder    data/articles/ \\
-        --output    results/ \\
+        --output    ../results/ \\
         --skip-stage0
 
     # Resume Stage 2 from a previous Stage 1 output
     python run_pipeline.py \\
-        --output       results/ \\
-        --stage1-file  results/stage1/detection_output.json \\
+        --output       ../results/ \\
+        --stage1-file  ../results/stage1/detection_output.json \\
         --skip-stage0 --skip-stage1
 
 Directory layout created under --output
 ----------------------------------------
     <output>/
-      stage0/          ← Stage 0 JSON files  (eDOC_XXXX.json)
-      stage1/                 ← Stage 1 detection JSON + checkpoint
-      stage2/                 ← Stage 2 FDE JSONL, CSV, failed log, checkpoint
+      stage0/   <- Stage 0 JSON files  (eDOC_XXXX.json)
+      stage1/   <- Stage 1 detection JSON + checkpoint
+      stage2/   <- Stage 2 FDE JSONL, CSV, failed log, checkpoint
 """
 
 from __future__ import annotations
@@ -112,36 +123,111 @@ def run_stage0(args, text_dir: Path) -> int:
     """
     Extract articles to JSON files in text_dir.
     Returns the number of articles written.
+ 
+    Supported input modes
+    ---------------------
+    --zip            ZIP archive of LexisNexis .docx files
+    --folder         Directory of .docx / .doc / .txt files
+    --file           Single .docx / .doc / .txt file
+    --string         One raw article string passed inline on the CLI
+    --strings-json   Path to a JSON file containing either:
+                       • a plain array of strings  ["text1", "text2", ...]
+                       • an array of objects        [{"doc_id": "X", "text": "..."}, ...]
+                     Objects may omit "doc_id"; the position index is used as a
+                     fallback so IDs are always unique.
     """
     log.info("=" * 60)
     log.info("STAGE 0 — Text Extraction")
     log.info("=" * 60)
-
+ 
     text_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-
+ 
     if args.zip:
         count = _stage0_mod.process_zip(
             zip_path   = str(args.zip),
             output_dir = str(text_dir),
             id_start   = args.id_start,
         )
+ 
     elif args.folder:
         count = _stage0_mod.process_folder(
             folder_path = str(args.folder),
             output_dir  = str(text_dir),
             id_start    = args.id_start,
         )
+ 
     elif args.file:
-        record = _stage0_mod.process_file(
+        _stage0_mod.process_file(
             path       = str(args.file),
             output_dir = str(text_dir),
         )
         count = 1
+ 
+    elif args.string:
+        # Single inline string — use --id-start as the numeric part of the ID.
+        doc_id = f"DOC_{args.id_start:04d}"
+        _stage0_mod.process_string(
+            text       = args.string,
+            doc_id     = doc_id,
+            output_dir = str(text_dir),
+        )
+        log.info(f"  Processed inline string → {doc_id}")
+        count = 1
+ 
+    elif args.strings_json:
+        # Batch of raw strings from a JSON file.
+        strings_path = Path(args.strings_json)
+        if not strings_path.exists():
+            log.error(f"--strings-json file not found: {strings_path}")
+            sys.exit(1)
+ 
+        with strings_path.open(encoding="utf-8") as fh:
+            raw_input = json.load(fh)
+ 
+        if not isinstance(raw_input, list):
+            log.error(
+                f"--strings-json must contain a JSON array; "
+                f"got {type(raw_input).__name__}"
+            )
+            sys.exit(1)
+ 
+        count = 0
+        for i, item in enumerate(raw_input):
+            # Accept both plain strings and {"doc_id": ..., "text": ...} objects.
+            if isinstance(item, str):
+                text   = item
+                doc_id = f"DOC_{(args.id_start + i):04d}"
+            elif isinstance(item, dict):
+                text = item.get("text", "")
+                if not text:
+                    log.warning(f"  Item {i}: missing 'text' key — skipping")
+                    continue
+                # Honour an explicit doc_id when provided, otherwise auto-assign.
+                explicit_id = item.get("doc_id")
+                doc_id = str(explicit_id) if explicit_id else f"DOC_{(args.id_start + i):04d}"
+            else:
+                log.warning(
+                    f"  Item {i}: expected str or dict, got "
+                    f"{type(item).__name__} — skipping"
+                )
+                continue
+ 
+            _stage0_mod.process_string(
+                text       = text,
+                doc_id     = doc_id,
+                output_dir = str(text_dir),
+            )
+            log.info(f"  [{i+1}/{len(raw_input)}] processed → {doc_id}")
+            count += 1
+ 
     else:
-        log.error("Stage 0: no input provided (--zip / --folder / --file)")
+        log.error(
+            "Stage 0: no input provided. "
+            "Use --zip / --folder / --file / --string / --strings-json"
+        )
         sys.exit(1)
-
+ 
     log.info(f"Stage 0 complete — {count} articles written  ({time.time()-t0:.1f}s)")
     return count
 
@@ -509,6 +595,20 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="Folder containing article files (.docx / .doc / .txt)")
     inp.add_argument("--file",   type=Path, metavar="PATH",
                      help="Single article file (.docx / .doc / .txt)")
+    inp.add_argument("--string", type=str, metavar="TEXT",
+                     help=(
+                         "Single raw article string passed inline. "
+                         "Quote the whole string on the CLI. "
+                         "The doc_id is DOC_<id-start> (default DOC_0001)."
+                     ))
+    inp.add_argument("--strings-json", type=Path, metavar="PATH",
+                     help=(
+                         "JSON file containing a batch of raw article strings. "
+                         "Accepted formats:\n"
+                         '- plain array:   ["text1", "text2", ...]\n'
+                         '- object array:  [{"doc_id": "X", "text": "..."}, ...]\n'
+                         "Objects may omit doc_id; position index is used as fallback."
+                     ))
 
     # ── Output ─────────────────────────────────────────────────────────────
     p.add_argument("--output", type=Path, default=Path("results"),
@@ -556,10 +656,15 @@ def main() -> None:
     if args.skip_stage1 and args.stage1_file is None:
         log.error("--skip-stage1 requires --stage1-file <path>")
         sys.exit(1)
-
-    if not args.skip_stage0 and (args.zip is None and args.folder is None and args.file is None):
-        log.error("Provide --zip, --folder, or --file for Stage 0 input "
-                  "(or use --skip-stage0 to reuse existing extracted files)")
+ 
+    if not args.skip_stage0 and not any([
+        args.zip, args.folder, args.file, args.string, args.strings_json
+    ]):
+        log.error(
+            "Provide an input source for Stage 0: "
+            "--zip / --folder / --file / --string / --strings-json "
+            "(or use --skip-stage0 to reuse existing extracted files)"
+        )
         sys.exit(1)
 
     # ── Directory layout ───────────────────────────────────────────────────
@@ -569,7 +674,7 @@ def main() -> None:
     stage2_dir  = output_dir / "stage2"
 
     log.info("=" * 60)
-    log.info("FISHERIES CONFLICT PIPELINE")
+    log.info("FISHERIES DISPUTE EVENT PIPELINE")
     log.info("=" * 60)
     log.info(f"  Output root  : {output_dir.resolve()}")
     log.info(f"  Model        : {args.model}")

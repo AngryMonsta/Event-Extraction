@@ -387,7 +387,7 @@ def run_inference(
 
 def _find_matching_bracket(text: str, start_idx: int, open_char: str = '[', close_char: str = ']') -> Optional[int]:
     """Find the index of the matching closing bracket for a bracket at start_idx.
-
+ 
     Handles quoted strings and escaped characters. Returns None if not found.
     """
     depth = 0
@@ -421,7 +421,7 @@ def _repair_truncated_json(text: str) -> str:
     stack = []
     in_string = False
     escaped = False
-
+ 
     for ch in text:
         if in_string:
             if escaped:
@@ -439,7 +439,7 @@ def _repair_truncated_json(text: str) -> str:
                 stack.append(']')
             elif ch in ('}', ']') and stack and stack[-1] == ch:
                 stack.pop()
-
+ 
     repaired = text.rstrip()
     if in_string:
         repaired += '"'
@@ -447,6 +447,30 @@ def _repair_truncated_json(text: str) -> str:
         repaired += stack.pop()
     return repaired
 
+def _sanitise_raw_json(text: str) -> str:
+    # 1. Leading-zero integers: match a JSON value position (after : or ,/[)
+    #    and replace 0-padded numeric literals with their int value.
+    #    Specifically catch the 0000 / 00 etc pattern the model produces.
+    text = re.sub(
+        r'(?<=[:\s,\[])0+(\d+)',   # 0000 → 0, 007 → 7, 00 → 0
+        lambda m: str(int(m.group(0))),
+        text,
+    )
+ 
+    # 2. Placeholder date strings: "YYYY-MM-DD" variants → "0000-MM-DD"
+    #    Handles both digit months ("YYYY-10-15") and literal placeholders ("YYYY-MM-01", "YYYY-MM-DD")
+    text = re.sub(
+        r'"YYYY-(\d{2}|MM)-(\d{2}|DD)"',
+        lambda m: (
+            f'"0000-{m.group(1) if m.group(1) != "MM" else "01"}'
+            f'-{m.group(2) if m.group(2) != "DD" else "01"}"'
+        ),
+        text,
+    )
+    # Catch any remaining fully-symbolic placeholder not matched above
+    text = text.replace('"YYYY-MM-DD"', '"0000-01-01"')
+ 
+    return text
 
 def extract_json_array(raw: str) -> Optional[list]:
     """
@@ -455,7 +479,7 @@ def extract_json_array(raw: str) -> Optional[list]:
     truncated JSON repair as fallbacks.
     """
     text = raw or ""
-
+ 
     # If model uses channel/turn markers, find the channel tag immediately
     # preceding the JSON array or object using a single regex (avoids ambiguous lists).
     # Matches tags like <channel|>, <|channel>, <channel|> etc only when they
@@ -474,9 +498,9 @@ def extract_json_array(raw: str) -> Optional[list]:
         if end is not None:
             candidate = text[start:end+1]
             try:
-                return json.loads(candidate)
+                return json.loads(_sanitise_raw_json(candidate))
             except json.JSONDecodeError:
-                repaired = _repair_truncated_json(candidate)
+                repaired = _repair_truncated_json(_sanitise_raw_json(candidate))
                 try:
                     return json.loads(repaired)
                 except json.JSONDecodeError:
@@ -484,12 +508,12 @@ def extract_json_array(raw: str) -> Optional[list]:
         else:
             # truncated: take remainder starting at the opening char and attempt repair
             candidate = text[start:]
-            repaired = _repair_truncated_json(candidate)
+            repaired = _repair_truncated_json(_sanitise_raw_json(candidate))
             try:
                 return json.loads(repaired)
             except json.JSONDecodeError:
                 pass
-
+ 
     # 1. Try fenced code blocks
     if "```" in text:
         parts = text.split("```")
@@ -498,20 +522,20 @@ def extract_json_array(raw: str) -> Optional[list]:
             if cleaned.startswith("json"):
                 cleaned = cleaned[4:].strip()
             try:
-                return json.loads(cleaned)
+                return json.loads(_sanitise_raw_json(cleaned))
             except json.JSONDecodeError:
-                repaired = _repair_truncated_json(cleaned)
+                repaired = _repair_truncated_json(_sanitise_raw_json(cleaned))
                 try:
                     return json.loads(repaired)
                 except json.JSONDecodeError:
                     continue
-
+ 
     # 2. Try raw JSON
     try:
-        return json.loads(text)
+        return json.loads(_sanitise_raw_json(text))
     except json.JSONDecodeError:
         pass
-
+ 
     # 3. Find balanced JSON array starting at first '[' (fallback)
     start = text.find('[')
     if start != -1:
@@ -519,44 +543,43 @@ def extract_json_array(raw: str) -> Optional[list]:
         if end is not None:
             candidate = text[start:end+1]
             try:
-                return json.loads(candidate)
+                return json.loads(_sanitise_raw_json(candidate))
             except json.JSONDecodeError:
-                repaired = _repair_truncated_json(candidate)
+                repaired = _repair_truncated_json(_sanitise_raw_json(candidate))
                 try:
                     return json.loads(repaired)
                 except json.JSONDecodeError:
                     pass
-
+ 
     # 4. As a last resort, strip common channel/turn/eos tokens and retry
     cleaned = re.sub(r"<\/?\|?\w+\|?>", "", text)
     cleaned = re.sub(r"<(?:eos|turn|\|eos\||\|turn\|)>", "", cleaned)
     try:
-        return json.loads(cleaned)
+        return json.loads(_sanitise_raw_json(cleaned))
     except json.JSONDecodeError:
-        # try to repair truncated cleaned text
-        repaired = _repair_truncated_json(cleaned)
+        repaired = _repair_truncated_json(_sanitise_raw_json(cleaned))
         try:
             return json.loads(repaired)
         except json.JSONDecodeError:
             pass
-
-    # 4. Try single JSON object
+ 
+    # 5. Try single JSON object
     obj_start = text.find('{')
     if obj_start != -1:
         obj_end = _find_matching_bracket(text, obj_start, open_char='{', close_char='}')
         if obj_end is not None:
             candidate = text[obj_start:obj_end+1]
             try:
-                parsed = json.loads(candidate)
+                parsed = json.loads(_sanitise_raw_json(candidate))
                 return [parsed]
             except json.JSONDecodeError:
-                repaired = _repair_truncated_json(candidate)
+                repaired = _repair_truncated_json(_sanitise_raw_json(candidate))
                 try:
                     parsed = json.loads(repaired)
                     return [parsed]
                 except json.JSONDecodeError:
                     pass
-
+ 
     return None
 
 
@@ -623,14 +646,21 @@ def _normalize_event(ev: dict, article_id: str) -> dict:
             except Exception:
                 ev.pop(key, None)
 
-    # Try to infer year from date when missing
-    if "year" not in ev or ev.get("year") is None:
-        date = ev.get("date")
-        if isinstance(date, str) and len(date) >= 4 and date[:4].isdigit():
-            try:
-                ev["year"] = int(date[:4])
-            except Exception:
-                pass
+    # Infer year from date when missing / zero
+    date = ev.get("date", "")
+    if isinstance(date, str):
+        # Normalise any remaining YYYY placeholder to 0000
+        if date.startswith("YYYY"):
+            date = "0000" + date[4:]
+            ev["date"] = date
+ 
+        year_val = ev.get("year")
+        if not year_val:                      
+            if len(date) >= 4 and date[:4].isdigit():
+                try:
+                    ev["year"] = int(date[:4])
+                except Exception:
+                    pass
 
     # Ensure article_id present
     if "article_id" not in ev or not ev["article_id"]:
