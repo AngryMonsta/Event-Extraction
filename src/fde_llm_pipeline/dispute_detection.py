@@ -2,7 +2,7 @@
 
 Example:
     python dispute_detection.py \
-        --data-folder ../proto_data/ \
+        --data-folder proto_data/ \
         --extraction-folder TextExtracted \
         --output-filename Gemma4_e4b_summary \
         --model-id google/gemma-4-E4B-it \

@@ -9,11 +9,6 @@ Stages
   Stage 1  — Dispute detection (dispute_detection.py)
   Stage 2  — FDE extraction    (fde_data_collection.py)
 
-The LLM is loaded **once** via model_registry.py.  Both Stage 1 and
-Stage 2 receive the pre-loaded model objects directly, so HuggingFace's
-from_pretrained is called only a single time regardless of how many
-articles are processed.
-
 Usage
 -----
     python run_pipeline.py [options]
@@ -21,23 +16,23 @@ Usage
     # Minimal — ZIP input, auto device
     python run_pipeline.py \\
         --zip       data/Somalia.ZIP \\
-        --output    ../results/
+        --output    results/
         
     # Single raw article string supplied inline on the CLI
     python run_pipeline.py \\
         --string    "Kenya coastguard arrested 12 Somali fishers near Lamu on 3 March 2005..." \\
-        --output    ../results/
+        --output    results/
  
     # Batch of raw strings from a JSON file  (array of strings, or array of
     # {"doc_id": "...", "text": "..."} objects for explicit IDs)
     python run_pipeline.py \\
         --strings-json  data/articles.json \\
-        --output        ../results/
+        --output        results/
 
     # Full control
     python run_pipeline.py \\
         --zip           data/Somalia.ZIP \\
-        --output        ../results/ \\
+        --output        results/ \\
         --model         google/gemma-4-E4B-it \\
         --device        cuda:0 \\
         --device-map-mode single \\
@@ -54,13 +49,13 @@ Usage
     # Skip extraction (articles already in results/stage0/)
     python run_pipeline.py \\
         --folder    data/articles/ \\
-        --output    ../results/ \\
+        --output    results/ \\
         --skip-stage0
 
     # Resume Stage 2 from a previous Stage 1 output
     python run_pipeline.py \\
-        --output       ../results/ \\
-        --stage1-file  ../results/stage1/detection_output.json \\
+        --output       results/ \\
+        --stage1-file  results/stage1/detection_output.json \\
         --skip-stage0 --skip-stage1
 
 Directory layout created under --output
@@ -81,26 +76,13 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-# ── Stage 0 (text extraction — no model needed) ───────────────────────────
-# Import the batch processors directly from the existing module.
-# Use importlib so the filename with leading digits works cleanly.
-import importlib.util as _ilu
-
-def _load_module(name: str, path: Path):
-    spec = _ilu.spec_from_file_location(name, path)
-    mod  = _ilu.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-_HERE = Path(__file__).parent
-
-_stage0_mod = _load_module("stage0", _HERE / "text_extraction.py")
-_stage1_mod = _load_module("stage1", _HERE / "dispute_detection.py")
-_stage2_mod = _load_module("stage2", _HERE / "fde_data_collection.py")
+# ── Stage modules (relative imports — works from repo root after pip install -e .) ──
+from . import text_extraction      as _stage0_mod
+from . import dispute_detection    as _stage1_mod
+from . import fde_data_collection  as _stage2_mod
 
 # ── Shared model registry ─────────────────────────────────────────────────
-from model_registry import load_shared_model
+from .model_registry import load_shared_model
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +96,17 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+# Silence noisy third-party loggers (httpx, HuggingFace Hub HTTP requests, etc.)
+for _noisy in (
+    "httpx",
+    "httpcore",
+    "huggingface_hub",
+    "huggingface_hub.utils",
+    "transformers",
+    "accelerate",
+    "filelock",
+):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # ---------------------------------------------------------------------------
 # Stage 0 runner

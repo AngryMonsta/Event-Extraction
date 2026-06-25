@@ -15,15 +15,15 @@ Directory layout expected:
 
 Usage:
     python fde_data_collection.py \\
-        --stage1    ../proto_data/DisputeDetect/Gemma4_e4b_summary_test.json \\
-        --articles  ../proto_data/TextExtracted/ \\
-        --output    ../results/ \\
+        --stage1    proto_data/DisputeDetect/Gemma4_e4b_summary_test.json \\
+        --articles  proto_data/TextExtracted/ \\
+        --output    results/ \\
         --model     google/gemma-4-E4B-it
 
     # Limit to N articles (for testing)
     python fde_data_collection.py \\
-        --stage1 ../proto_data/Gemma4_e4b_summary_2.json \\
-        --articles ../proto_data/n_extracted/ \\
+        --stage1 proto_data/Gemma4_e4b_summary_2.json \\
+        --articles proto_data/n_extracted/ \\
         --limit 5
 """
 
@@ -55,6 +55,17 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+# Silence noisy third-party loggers (httpx, HuggingFace Hub HTTP requests, etc.)
+for _noisy in (
+    "httpx",
+    "httpcore",
+    "huggingface_hub",
+    "huggingface_hub.utils",
+    "transformers",
+    "accelerate",
+    "filelock",
+):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 def _atomic_json_dump(path: Path, payload) -> None:
     """Write JSON atomically so checkpoint files are never partial."""
@@ -144,20 +155,10 @@ no commentary. If no FDEs are found, return [].
 FDE: An incident in which a fisheries resource is contested, disputed, or the
 source of conflict between ≥2 ACTORS, at a DISCRETE TEMPORAL MOMENT, in a
 DISCRETE LOCATION.
-    - Fisheries resource: A natural aquatic resource (e.g., stocks, populations, species, assemblages) which can be
-caught by fishing legally. The habitat supporting or containing the resource may also be
-considered.
-    - Actor: An individual or group engaging in an event. Groups can be organized or spontaneous. All
-actors must be people. For example, a hippopotamus attacking fishers for fishing in its territory
-is not an FDE because humans are actors on only one side of the conflict.
-    - Discrete temporal moment: An event occurs over a defined period of time (days, weeks) versus a systemic condition. For
-example, a conflict in June 2018 between two fishers over access to fishing gear would meet
-the definition needed to be counted as an FDE, but a description of long-term poverty in a
-fishing village is not a discrete temporal moment.
-    - Discrete location: An event occurs in a bounded location (landing site, village, place of business) versus being a
-diffuse occurrence. For example, conflict at Orion Reef between illegal fishers and marine
-authorities would meet the definition needed to be counted as an FDE, but a general description
-of dynamite fishing along the coast of T anzania is not a discrete location.
+- Fisheries resource: A legal natural aquatic resource (e.g., stocks, populations, species, assemblages), or habitat supporting or containing the resource. 
+- Actor: an individual or group engaging in an event (both sides must be human).
+- Discrete temporal moment: defined days/weeks, NOT a chronic systemic condition.
+- Discrete location: a bounded site (landing site, village, place of business), NOT a diffuse region or occurrence.
 
 --- REGION CODES ---
 0=Arctic
@@ -748,8 +749,8 @@ def main():
                         help="Path to Stage 1 output JSON file")
     parser.add_argument("--articles", required=True,
                         help="Path to folder containing article .json files")
-    parser.add_argument("--output",   default="../results/",
-                        help="Output directory (default: ../results/)")
+    parser.add_argument("--output",   default="results/",
+                        help="Output directory (default: results/)")
     parser.add_argument("--model",    default="google/gemma-4-E4B-it",
                         help="HuggingFace model ID (default: google/gemma-4-E4B-it)")
     parser.add_argument("--device",   default="auto",
