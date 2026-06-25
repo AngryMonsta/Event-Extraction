@@ -78,7 +78,7 @@ export HF_TOKEN="hf_..."
 
 ```bash
 python -m fde_llm_pipeline.run_pipeline \
-    --zip       data/test_raw.ZIP \
+    --zip       data/test_data/test_raw.ZIP \
     --output    results/ \
     --model     google/gemma-4-E4B-it \
     --checkpoint-every 10
