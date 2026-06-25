@@ -31,6 +31,7 @@ idna==3.18
 importlib_metadata==9.0.0
 Jinja2==3.1.6
 joblib==1.5.3
+lxml==6.1.1
 markdown-it-py==4.2.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
@@ -85,6 +86,7 @@ pydantic==2.13.4
 pydantic_core==2.46.4
 Pygments==2.20.0
 python-dateutil==2.9.0.post0
+python-docx==1.2.0
 PyYAML==6.0.3
 regex==2026.5.9
 requests==2.34.2
@@ -112,11 +114,8 @@ typer==0.25.1
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tyro==1.0.13
-unsloth @ git+https://github.com/unslothai/unsloth.git@53af4a1b3e78f2d1cac9401fe15baf8720fc2303
-unsloth_zoo==2026.6.1
 urllib3==2.7.0
 wheel==0.47.0
-xformers @ https://download.pytorch.org/whl/cu128/xformers-0.0.34-cp39-abi3-manylinux_2_28_x86_64.whl
 xxhash==3.7.0
 yarl==1.24.2
 zipp==4.1.0
