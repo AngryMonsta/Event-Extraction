@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fde-llm-pipeline"
+version = "0.1.0"
+description = "Fisheries Dispute Event (FDE) extraction pipeline using local LLMs."
+readme = "README.md"
+requires-python = ">=3.10"
+
+# Core runtime dependencies (pinned versions from requirements.txt).
+# GPU/CUDA packages (nvidia-*, cuda-*, triton) are omitted here because
+# they are environment-specific; install them separately or via requirements.txt.
+dependencies = [
+    "accelerate>=1.13.0",
+    "pydantic>=2.0",
+    "python-docx>=1.2.0",
+    "torch>=2.0",
+    "transformers>=4.40",
+    "tqdm>=4.60",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+# Install all pinned versions from the lockfile
+full = [
+    "bitsandbytes",
+    "datasets",
+    "peft",
+    "scikit-learn",
+    "sentence-transformers",
+    "sentencepiece",
+    "trl",
+]
+
+[project.scripts]
+# Convenience CLI entry points available after `pip install -e .`
+fde-extract   = "fde_llm_pipeline.text_extraction:main"
+fde-detect    = "fde_llm_pipeline.dispute_detection:main"
+fde-collect   = "fde_llm_pipeline.fde_data_collection:main"
+fde-pipeline  = "fde_llm_pipeline.run_pipeline:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
