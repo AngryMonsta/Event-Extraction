@@ -126,18 +126,18 @@ from fde_llm_pipeline import (
 
 ```
 FDE-LLM-Extraction/
-├── pyproject.toml              ← package metadata & build config (src layout)
-├── requirements.txt            ← full pinned dependency list
+├── pyproject.toml                  ← package metadata & build config (src layout)
+├── requirements.txt                ← full pinned dependency list
 ├── src/
-│   └── fde_llm_pipeline/       ← installable Python package
-│       ├── __init__.py         ← public API exports
-│       ├── text_extraction.py  ← Stage 0: LexisNexis → JSON
-│       ├── dispute_detection.py← Stage 1: FDE/FDA classification
-│       ├── fde_data_collection.py ← Stage 2: FDE record extraction
-│       ├── model_registry.py   ← shared LLM loader (one load for both stages)
-│       └── run_pipeline.py     ← end-to-end orchestrator
-├── experiments/                ← experiment scripts and output artifacts
+│   └── fde_llm_pipeline/           ← installable Python package
+│       ├── __init__.py             ← public API exports
+│       ├── text_extraction.py      ← Stage 0: LexisNexis → JSON
+│       ├── dispute_detection.py    ← Stage 1: FDE/FDA classification
+│       ├── fde_data_collection.py  ← Stage 2: FDE record extraction
+│       ├── model_registry.py       ← shared LLM loader (one load for both stages)
+│       └── run_pipeline.py         ← end-to-end orchestrator
+├── experiments/                    ← experiment scripts and output artifacts
 ├── data/
-│   └── test_data/              ← prototype inputs for quick iteration
-└── results/                    ← CSV / JSONL outputs from pipeline runs
+│   └── test_data/                  ← prototype inputs for quick iteration
+└── results/                        ← CSV / JSONL outputs from pipeline runs
 ```
