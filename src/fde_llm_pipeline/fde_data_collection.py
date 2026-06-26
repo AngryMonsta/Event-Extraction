@@ -207,9 +207,8 @@ StratLoc       Strategic importance of land location (not the fish itself)
 3. Aggregate/trend text without a discrete event → no FDE.
 4. date: YYYY-MM-DD; use -01 placeholders for unknown month/day.
 5. Actor1 = initiating/primary party; Actor2 = responding/secondary party.
-6. issue_note: a brief evidence-based summary, for EVERY true driver, quote or paraphrase the article phrase
-   that triggered it. This is mandatory — do not assert a driver without
-   citing evidence from the text.
+6. issue_note: a brief evidence-based summary of the thinking process, 
+   justifying key coding choices (violence_score, actors, any true drivers).
 7. Return only the JSON array — no extra text before or after.
 
 --- OUTPUT SCHEMA (one object per FDE) ---
@@ -909,6 +908,7 @@ def main():
                 "status": "ok",
                 "valid_events": valid_events,
                 "invalid_events": invalid_events,
+                # "raw_output": raw,
             })
             pending_batch.append(all_results[-1])
             
