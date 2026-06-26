@@ -2,9 +2,9 @@
 
 Example:
     python dispute_detection.py \
-        --data-folder proto_data/ \
-        --extraction-folder TextExtracted \
-        --output-filename Gemma4_e4b_summary \
+        --data-folder data/ \
+        --extraction-folder results/stage0 \
+        --output-filename dispute_output \
         --model-id google/gemma-4-E4B-it \
         --checkpoint-every 3 \
         --limit 10

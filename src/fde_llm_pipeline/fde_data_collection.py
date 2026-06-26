@@ -15,15 +15,15 @@ Directory layout expected:
 
 Usage:
     python fde_data_collection.py \\
-        --stage1    proto_data/DisputeDetect/Gemma4_e4b_summary_test.json \\
-        --articles  proto_data/TextExtracted/ \\
+        --stage1    results/stage1/detection_output_.json \\
+        --articles  results/stage0/ \\
         --output    results/ \\
         --model     google/gemma-4-E4B-it
 
     # Limit to N articles (for testing)
     python fde_data_collection.py \\
-        --stage1 proto_data/Gemma4_e4b_summary_2.json \\
-        --articles proto_data/n_extracted/ \\
+        --stage1 results/stage1/detection_output_.json \\
+        --articles results/stage0/ \\
         --limit 5
 """
 
@@ -483,18 +483,20 @@ def extract_json_array(raw: str) -> Optional[list]:
  
     # If model uses channel/turn markers, find the channel tag immediately
     # preceding the JSON array or object using a single regex (avoids ambiguous lists).
-    # Matches tags like <channel|>, <|channel>, <channel|> etc only when they
-    # are directly followed by optional whitespace and either '[' or '{'.
-    m_iter = re.finditer(r"<[^>]*channel[^>]*>\s*([\[{])", text, flags=re.IGNORECASE)
+    # Matches tags like <channel|> only when directly followed by optional whitespace and either '[' or '{'.
+    m_iter = re.finditer(r"<channel\|>(?=\s*[\[{])", text, flags=re.IGNORECASE)
     last_m = None
-    last_open = None
+
     for m in m_iter:
         last_m = m
-        last_open = m.group(1)
-    if last_m is not None:
-        start = last_m.end() - 1  # position of '[' or '{'
-        open_char = last_open
-        close_char = ']' if open_char == '[' else '}'
+
+    if last_m:
+        pos = last_m.end()
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        open_char = text[pos]
+        start = pos
+        close_char = "]" if open_char == "[" else "}"
         end = _find_matching_bracket(text, start, open_char=open_char, close_char=close_char)
         if end is not None:
             candidate = text[start:end+1]
