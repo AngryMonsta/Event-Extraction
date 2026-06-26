@@ -74,7 +74,7 @@ hf auth login
 export HF_TOKEN="hf_..."
 ```
 
-6. Run a quick smoke test using the provided test data:
+## Run a quick smoke test using the provided test data:
 
 ```bash
 python -m fde_llm_pipeline.run_pipeline \
@@ -86,7 +86,7 @@ python -m fde_llm_pipeline.run_pipeline \
 
 Run this command from the repository root. The `results/` directory will be created automatically if it does not already exist.
 
-## Running Individual Pipeline Stages
+### Running Individual Pipeline Stages
 
 Each stage can also be run independently as a module or via its console-script shortcut:
 
