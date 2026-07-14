@@ -39,6 +39,7 @@ full = [
 fde-extract   = "fde_llm_pipeline.text_extraction:main"
 fde-detect    = "fde_llm_pipeline.dispute_detection:main"
 fde-collect   = "fde_llm_pipeline.fde_data_collection:main"
+fde-deduplicate = "fde_llm_pipeline.fde_deduplication:main"
 fde-pipeline  = "fde_llm_pipeline.run_pipeline:main"
 
 [tool.setuptools.packages.find]

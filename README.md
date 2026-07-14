@@ -19,12 +19,12 @@ News articles are sourced from Nexis Uni using the following search parameters:
 
 **Search Query:**
 ```
-Coastal:"dar es salaam" OR "mafia marine park" OR "mafia island" OR (muheza OR tanga OR pangani OR bagamoyo OR mkuranga OR rufiji OR kilwa OR zanzibar OR pemba OR lindi OR mtwara OR tanzania OR tanzanian) AND "exclusive economic zone" OR "territorial waters" OR (coast OR coastline OR coastal OR beach OR island) AND (fish OR fishery OR fisheries OR fisherman OR fishermen OR fisherfolk OR aquaculture OR fishmonger OR mammies OR seine OR cockle)
+"dar es salaam" OR "mafia marine park" OR "mafia island" OR (muheza OR tanga OR pangani OR bagamoyo OR mkuranga OR rufiji OR kilwa OR zanzibar OR pemba OR lindi OR mtwara OR tanzania OR tanzanian) AND "exclusive economic zone" OR "territorial waters" OR (coast OR coastline OR coastal OR beach OR island) AND (fish OR fishery OR fisheries OR fisherman OR fishermen OR fisherfolk OR aquaculture OR fishmonger OR mammies OR seine OR cockle)
 ```
 
 **Query Parameters:**
-- **Time Frame:** 1990 - 2017
-- **Exclusion:** "dispute"
+- **Time Frame:** 2009 - 2010
+- **Exclusion:** "conflict" OR "dispute" OR "contested"
 
 **Download Instructions:**
 Download individual news articles from the Nexis Uni search results and save them to `data`, or use test data in `data/test_data`.
@@ -95,6 +95,7 @@ Each stage can also be run independently as a module or via its console-script s
 | 0 – Text extraction | `python -m fde_llm_pipeline.text_extraction` | `fde-extract` | Convert `.docx`/`.doc`/`.txt`/ZIP → JSON |
 | 1 – Dispute detection | `python -m fde_llm_pipeline.dispute_detection` | `fde-detect` | Classify articles for FDE/FDA presence |
 | 2 – FDE extraction | `python -m fde_llm_pipeline.fde_data_collection` | `fde-collect` | Extract structured FDE records |
+| 3 – FDE deduplication | `python -m fde_llm_pipeline.fde_deduplication` | `fde-deduplicate` | Semantically deduplicate extracted FDE records |
 | All stages | `python -m fde_llm_pipeline.run_pipeline` | `fde-pipeline` | End-to-end orchestrator |
 
 Append `--help` to any command for full usage details.
@@ -117,8 +118,11 @@ from fde_llm_pipeline import (
     # Stage 2 — FDE data collection
     FdeEvent, run_inference, validate_events,
 
+    # Stage 3 — FDE deduplication
+    run_deduplication, load_and_concat, flag_duplicates, deduplicate,
+
     # Orchestrator
-    run_stage0, run_stage1, run_stage2,
+    run_stage0, run_stage1, run_stage2, run_stage3,
 )
 ```
 
@@ -134,6 +138,7 @@ FDE-LLM-Extraction/
 │       ├── text_extraction.py      ← Stage 0: LexisNexis → JSON
 │       ├── dispute_detection.py    ← Stage 1: FDE/FDA classification
 │       ├── fde_data_collection.py  ← Stage 2: FDE record extraction
+│       ├── fde_deduplication.py    ← Stage 3: Semantic deduplication of records
 │       ├── model_registry.py       ← shared LLM loader (one load for both stages)
 │       └── run_pipeline.py         ← end-to-end orchestrator
 ├── experiments/                    ← experiment scripts and output artifacts
