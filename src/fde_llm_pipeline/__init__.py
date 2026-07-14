@@ -1,13 +1,13 @@
 """
 fde_llm_pipeline
-================
-End-to-end Fisheries Dispute Event (FDE) extraction pipeline.
+An end-to-end Fisheries Dispute Event (FDE) extraction pipeline.
 
 Stages
 ------
   Stage 0  — Text extraction        (text_extraction)
   Stage 1  — Dispute detection      (dispute_detection)
   Stage 2  — FDE data collection    (fde_data_collection)
+  Stage 3  — FDE deduplication      (fde_deduplication)
 
 The LLM is loaded **once** via :mod:`model_registry` and shared across
 Stage 1 and Stage 2 so ``from_pretrained`` is called only a single time.
@@ -28,8 +28,11 @@ Quick-start
         # Stage 2
         FdeEvent, run_inference, validate_events,
 
+        # Stage 3
+        run_deduplication, load_and_concat, flag_duplicates, deduplicate,
+
         # Orchestrator
-        run_stage0, run_stage1, run_stage2,
+        run_stage0, run_stage1, run_stage2, run_stage3,
     )
 
 CLI entry points
@@ -37,12 +40,12 @@ CLI entry points
   python -m fde_llm_pipeline.text_extraction   --help
   python -m fde_llm_pipeline.dispute_detection --help
   python -m fde_llm_pipeline.fde_data_collection --help
+  python -m fde_llm_pipeline.fde_deduplication   --help
   python -m fde_llm_pipeline.run_pipeline      --help
 """
 
-# ---------------------------------------------------------------------------
+
 # Stage 0 — Text Extraction
-# ---------------------------------------------------------------------------
 from .text_extraction import (
     process_zip,
     process_folder,
@@ -55,17 +58,13 @@ from .text_extraction import (
     extract_body,
 )
 
-# ---------------------------------------------------------------------------
 # Model Registry  (load-once, shared by Stage 1 & Stage 2)
-# ---------------------------------------------------------------------------
 from .model_registry import (
     SharedModel,
     load_shared_model,
 )
 
-# ---------------------------------------------------------------------------
 # Stage 1 — Dispute Detection
-# ---------------------------------------------------------------------------
 from .dispute_detection import (
     DetectionSchema,
     OutputFileSchema,
@@ -74,9 +73,7 @@ from .dispute_detection import (
     run_detection,
 )
 
-# ---------------------------------------------------------------------------
 # Stage 2 — FDE Data Collection
-# ---------------------------------------------------------------------------
 from .fde_data_collection import (
     FdeCriteria,
     ConflictDrivers,
@@ -94,18 +91,23 @@ from .fde_data_collection import (
     is_fde_positive,
 )
 
-# ---------------------------------------------------------------------------
 # Pipeline Orchestrator (all three stages in one call)
-# ---------------------------------------------------------------------------
 from .run_pipeline import (
     run_stage0,
     run_stage1,
     run_stage2,
+    run_stage3
 )
 
-# ---------------------------------------------------------------------------
+# Stage 3 — FDE Deduplication
+from .fde_deduplication import (
+    run_deduplication,
+    load_and_concat,
+    flag_duplicates,
+    deduplicate,
+)
+
 # Package metadata
-# ---------------------------------------------------------------------------
 __all__ = [
     # Stage 0
     "process_zip",
@@ -141,8 +143,14 @@ __all__ = [
     "event_to_csv_row",
     "get_detections",
     "is_fde_positive",
+    # Stage 3
+    "run_deduplication",
+    "load_and_concat",
+    "flag_duplicates",
+    "deduplicate",
     # Orchestrator
     "run_stage0",
     "run_stage1",
     "run_stage2",
+    "run_stage3"
 ]
