@@ -8,6 +8,7 @@ Stages
   Stage 0  — Text extraction   (text_extraction.py)
   Stage 1  — Dispute detection (dispute_detection.py)
   Stage 2  — FDE extraction    (fde_data_collection.py)
+  Stage 3  — FDE deduplication   (fde_deduplication.py)
 
 Usage
 -----
@@ -44,7 +45,10 @@ Usage
         --limit-s1        None \\
         --limit-s2        None \\
         --skip-stage0         \\   # re-use already-extracted JSON files
-        --skip-stage1             # re-use existing Stage 1 output JSON
+        --skip-stage1         \\   # re-use existing Stage 1 output JSON
+        --skip-dedup          \\   # skip record deduplication
+        --date-window     7   \\   # max days window for duplicate events
+        --sim-threshold   0.65    # similarity threshold for deduplication
 
     # Skip extraction (articles already in results/stage0/)
     python run_pipeline.py \\
@@ -57,6 +61,11 @@ Usage
         --output       results/ \\
         --stage1-file  results/stage1/detection_output.json \\
         --skip-stage0 --skip-stage1
+    
+    # Skip post extraction deduplication
+    python run_pipeline.py \\
+        --output       results/ \\
+        --skip-dedup
 
 Directory layout created under --output
 ----------------------------------------
@@ -64,6 +73,7 @@ Directory layout created under --output
       stage0/   <- Stage 0 JSON files  (eDOC_XXXX.json)
       stage1/   <- Stage 1 detection JSON + checkpoint
       stage2/   <- Stage 2 FDE JSONL, CSV, failed log, checkpoint
+      stage3/   <- Stage 3 final deduplicated output (final_fde_output.csv)
 """
 
 from __future__ import annotations
@@ -75,11 +85,14 @@ import sys
 import time
 from pathlib import Path
 from datetime import datetime
+import csv
+from pydantic import TypeAdapter
 
 # ── Stage modules (relative imports — works from repo root after pip install -e .) ──
 from . import text_extraction      as _stage0_mod
 from . import dispute_detection    as _stage1_mod
 from . import fde_data_collection  as _stage2_mod
+from . import fde_deduplication as _stage3_mod
 
 # ── Shared model registry ─────────────────────────────────────────────────
 from .model_registry import load_shared_model
@@ -262,7 +275,6 @@ def run_stage1(
     log.info(f"  Articles to classify: {len(extraction_files)}")
 
     # Build system prompt using Stage 1 helper
-    from pydantic import TypeAdapter
     schema_json    = json.dumps(
         TypeAdapter(_stage1_mod.DetectionSchema).json_schema(), indent=2
     )
@@ -370,7 +382,6 @@ def run_stage2(
     """
     Run FDE extraction over FDE-positive articles from Stage 1 output.
     """
-    import csv
 
     log.info("=" * 60)
     log.info("STAGE 2 — FDE Extraction")
@@ -565,6 +576,18 @@ def run_stage2(
     log.info(f"  Output CSV               : {csv_path}")
     log.info(f"  Failed log               : {failed_path}")
 
+def run_stage3(
+    args,
+    stage2_dir: Path,
+    stage3_dir: Path,
+) -> Path:
+    
+    log.info("=" * 60)
+    log.info("STAGE 3 — Semantic Deduplication")
+    log.info("=" * 60)
+
+    # stage3_dir.mkdir(parents=True, exist_ok=True)
+    return _stage3_mod.run_deduplication(args, stage2_dir=stage2_dir, stage3_dir=stage3_dir)
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -573,7 +596,7 @@ def run_stage2(
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=(
-            "Fisheries Conflict Pipeline — runs Stage 0 → 1 → 2 with a "
+            "Fisheries Conflict Pipeline — runs Stage 0 - 3 with a "
             "single LLM load."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -622,7 +645,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Skip dispute detection; requires --stage1-file")
     p.add_argument("--stage1-file", type=Path, default=None,
                    help="Path to existing Stage 1 JSON output (required with --skip-stage1)")
-
+    p.add_argument("--skip-dedup", action="store_true",
+                   help="Skip record dereplication")
+    
     # ── Inference tuning ───────────────────────────────────────────────────
     p.add_argument("--max-new-tokens",  type=int,   default=2048)
     p.add_argument("--temperature",     type=float, default=0.1)
@@ -639,6 +664,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit-s2",  type=int, default=None,
                    help="Process only the first N FDE-positive articles in Stage 2 (testing)")
 
+    # ── Post extration ─────────────────────────────────────────────────────
+    p.add_argument("--date-window", type=int, default=7, dest="date_window",
+        help="Max days between event dates to be considered duplicates (default: 7)"
+    )
+    p.add_argument("--sim-threshold", type=float, default=0.65, dest="sim_threshold",
+        help="Minimum cosine similarity to flag as duplicate (default: 0.65)"
+    )
     return p
 
 
@@ -665,6 +697,7 @@ def main() -> None:
     text_dir    = output_dir / "stage0"
     stage1_dir  = output_dir / "stage1"
     stage2_dir  = output_dir / "stage2"
+    stage3_dir = output_dir / "stage3"
 
     log.info("=" * 60)
     log.info("FISHERIES DISPUTE EVENT PIPELINE")
@@ -674,6 +707,7 @@ def main() -> None:
     log.info(f"  Device       : {args.device}")
     log.info(f"  Skip Stage 0 : {args.skip_stage0}")
     log.info(f"  Skip Stage 1 : {args.skip_stage1}")
+    log.info(f"  Skip Deduplication : {args.skip_dedup}")
 
     # ── Stage 0 ───────────────────────────────────────────────────────────
     if args.skip_stage0:
@@ -705,11 +739,16 @@ def main() -> None:
     # ── Stage 2 ───────────────────────────────────────────────────────────
     run_stage2(args, stage1_path, text_dir, stage2_dir, shared_model)
 
+    # ── Stage 3 ───────────────────────────────────────────────────────────
+    if args.skip_dedup:
+        log.info(f"Stage 3 deduplication skipped.")
+    else:
+        run_stage3(args, stage2_dir, stage3_dir)
+
     log.info("=" * 60)
     log.info("PIPELINE COMPLETE")
     log.info(f"  Results in: {output_dir.resolve()}")
     log.info("=" * 60)
-
-
+    
 if __name__ == "__main__":
     main()
