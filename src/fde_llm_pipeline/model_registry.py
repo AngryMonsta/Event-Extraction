@@ -121,20 +121,35 @@ def load_shared_model(
 
     # ── Resolve device & dtype ─────────────────────────────────────────────
     if device == "auto":
-        resolved_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            resolved_device = "cuda:0"
+            dtype = torch.bfloat16
+        elif torch.backends.mps.is_available():
+            resolved_device = "mps"
+            dtype = torch.float16
+        else:
+            resolved_device = "cpu"
+            dtype = torch.float32
+
     else:
         resolved_device = device
+    
+    is_mps = (
+        resolved_device == "mps"
+        or (isinstance(resolved_device, torch.device) and resolved_device.type == "mps")
+    )
 
-    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-
-    if device_map_mode == "auto":
-        device_map: str | dict = "auto"
+    # dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+    if is_mps:
+        device_map = None
+    elif device_map_mode == "auto":
+        device_map = "auto"
     else:
         device_map = {"": resolved_device}
 
     log.info("=" * 60)
     log.info(f"[ModelRegistry] Loading model : {model_name}")
-    log.info(f"[ModelRegistry] dtype={dtype}  device_map={device_map}")
+    log.info(f"[ModelRegistry] dtype={dtype}  device_map={device_map}  resolved_device={resolved_device}")
     log.info("=" * 60)
 
     # ── Load processor (Stage 1 primary interface) ─────────────────────────
@@ -152,6 +167,10 @@ def load_shared_model(
         device_map=device_map,
         low_cpu_mem_usage=True,
     )
+
+    if is_mps:
+        model = model.to(resolved_device)
+    
     model.eval()
     log.info(
         f"[ModelRegistry] Model ready  ({time.time() - t0:.1f}s)  "
