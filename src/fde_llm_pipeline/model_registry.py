@@ -103,7 +103,8 @@ def load_shared_model(
     Parameters
     ----------
     model_name : str
-        HuggingFace model identifier.
+        HuggingFace model identifier. 
+        Use "google/gemma-4-E4B-it-qat-mobile-transformers" if you don't have enough GPU memory.
     device : str
         "auto" lets torch choose the best visible device.
         Pass "cpu", "cuda", or "cuda:N" to pin explicitly.
@@ -112,14 +113,11 @@ def load_shared_model(
         "auto"    — shard across multiple GPUs via Accelerate device_map.
     stage2_batch_size : int
         Batch size baked into the Stage 2 text-generation pipeline.
-
-    Returns
-    -------
-    SharedModel
     """
+
     t0 = time.time()
 
-    # ── Resolve device & dtype ─────────────────────────────────────────────
+    #  Resolve device & dtype
     if device == "auto":
         if torch.cuda.is_available():
             resolved_device = "cuda:0"
@@ -139,7 +137,6 @@ def load_shared_model(
         or (isinstance(resolved_device, torch.device) and resolved_device.type == "mps")
     )
 
-    # dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     if is_mps:
         device_map = None
     elif device_map_mode == "auto":
@@ -152,14 +149,12 @@ def load_shared_model(
     log.info(f"[ModelRegistry] dtype={dtype}  device_map={device_map}  resolved_device={resolved_device}")
     log.info("=" * 60)
 
-    # ── Load processor (Stage 1 primary interface) ─────────────────────────
-    # AutoProcessor for Gemma returns a processor whose .tokenizer attribute
-    # IS an AutoTokenizer — we reuse that for Stage 2 to avoid a second load.
+    #  Load processor (Stage 1 primary interface)
     log.info("[ModelRegistry] Loading processor …")
     processor = AutoProcessor.from_pretrained(model_name)
     log.info(f"[ModelRegistry] Processor ready  ({time.time() - t0:.1f}s)")
 
-    # ── Load model weights (single load, shared by both stages) ───────────
+    #  Load model weights (load once, shared by both stages)
     log.info("[ModelRegistry] Loading model weights …")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -177,27 +172,22 @@ def load_shared_model(
         f"device={next(model.parameters()).device}"
     )
 
-    # ── Resolve tokenizer reference ────────────────────────────────────────
-    # AutoProcessor.tokenizer IS the same tokenizer object used internally.
-    # We expose it directly so Stage 2 can call tokenizer.apply_chat_template.
+    #  Resolve tokenizer reference 
     if hasattr(processor, "tokenizer"):
         tokenizer = processor.tokenizer
     else:
-        # Fallback: load tokenizer separately (very fast, config only)
         log.info(
             "[ModelRegistry] processor has no .tokenizer attr — "
             "loading tokenizer separately (fast, no weight load)"
         )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    # ── Build Stage 2 pipeline (zero extra weight load) ───────────────────
-    # Passing model= and tokenizer= explicitly prevents the pipeline
-    # constructor from calling from_pretrained a second time.
+    #  Build Stage 2 pipeline
     log.info("[ModelRegistry] Building Stage-2 text-generation pipeline …")
     pipe = hf_pipeline(
         "text-generation",
-        model=model,                    # ← same object, no copy
-        tokenizer=tokenizer,            # ← same object, no copy
+        model=model,
+        tokenizer=tokenizer,
         device_map="auto" if device_map_mode == "auto" else None,
         batch_size=stage2_batch_size,
     )
