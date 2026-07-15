@@ -1,6 +1,6 @@
 """
 Stage 2: FDE Extraction Pipeline — Local LLM (Gemma 4, HuggingFace Transformers)
-==================================================================================
+
 Reads Stage 1 output summary JSON, filters articles where contains_fde=True,
 loads article text from a separate folder, feeds each article to a local
 LLM model, validates the output against the FdeEvent Pydantic schema,
@@ -44,10 +44,7 @@ from pydantic import BaseModel, Field, ValidationError
 from accelerate import Accelerator
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
-# ---------------------------------------------------------------------------
 # Logging
-# ---------------------------------------------------------------------------
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -76,10 +73,8 @@ def _atomic_json_dump(path: Path, payload) -> None:
     tmp_path.replace(path)
 
 
-# ---------------------------------------------------------------------------
-# Pydantic schema (exactly as specified)
-# ---------------------------------------------------------------------------
 
+# Pydantic schema
 class FdeCriteria(BaseModel):
     min_two_actors: bool = Field(description="At least two actors are involved")
     discrete_temporal_moment: bool = Field(
@@ -140,11 +135,7 @@ class FdeEvent(BaseModel):
         )
     )
 
-
-# ---------------------------------------------------------------------------
 # Codebook system prompt
-# ---------------------------------------------------------------------------
-
 SYSTEM_PROMPT = textwrap.dedent("""
 You are an expert coder for the Fisheries Conflict Database.
 Read the supplied news article and extract every distinct Fisheries Dispute
@@ -170,11 +161,15 @@ DISCRETE LOCATION.
 4=South Asia
 
 --- LOCATION ---
-highly specific land-based or coastal points within the event region (e.g., Juani Village, Dar es Salaam, Alula)
+Highly specific land-based or coastal points within the event region (e.g., Juani Village, Dar es Salaam, Alula)
 
 --- LOC_ACCURACY CODES ---
-0=Country only  1=District/Province  2=International/High-seas
-3=NA (indeterminate)  4=Region (named but no district/town)  5=Town/village/named site
+0=Country only  
+1=District/Province  
+2=International/High-seas
+3=NA (indeterminate)  
+4=Region (named but no district/town)  
+5=Town/village/named site
 
 --- VIOLENCE SCORE ---
 1 = Verbal only — bans, complaints, fines, policy disputes
@@ -240,11 +235,7 @@ StratLoc       Strategic importance of land location (not the fish itself)
 }
 """).strip()
 
-
-# ---------------------------------------------------------------------------
 # Model loader
-# ---------------------------------------------------------------------------
-
 def load_model(model_name: str, device: str) -> tuple:
     """
     Load a Gemma 4 (or any causal LM) model and tokenizer from HuggingFace.
@@ -276,11 +267,7 @@ def load_model(model_name: str, device: str) -> tuple:
     log.info("Model loaded successfully.")
     return pipe
 
-
-# ---------------------------------------------------------------------------
 # Prompt builder
-# ---------------------------------------------------------------------------
-
 def build_prompt(tokenizer, article_id: str, article_text: str) -> str:
     """
     Build a chat-formatted prompt using the tokenizer's chat template
@@ -319,11 +306,7 @@ def build_prompt(tokenizer, article_id: str, article_text: str) -> str:
         f"<start_of_turn>model\n"
     )
 
-
-# ---------------------------------------------------------------------------
 # Inference
-# ---------------------------------------------------------------------------
-
 def run_inference(
     pipe,
     prompts,
@@ -380,11 +363,7 @@ def run_inference(
 
     return results[0] if single_prompt else results
 
-
-# ---------------------------------------------------------------------------
 # JSON extraction & validation
-# ---------------------------------------------------------------------------
-
 def _find_matching_bracket(text: str, start_idx: int, open_char: str = '[', close_char: str = ']') -> Optional[int]:
     """Find the index of the matching closing bracket for a bracket at start_idx.
  
@@ -414,7 +393,6 @@ def _find_matching_bracket(text: str, start_idx: int, open_char: str = '[', clos
                 if depth == 0:
                     return i
     return None
-
 
 def _repair_truncated_json(text: str) -> str:
     """Best-effort close open strings and brackets in truncated JSON-like text."""
@@ -480,9 +458,7 @@ def extract_json_array(raw: str) -> Optional[list]:
     """
     text = raw or ""
  
-    # If model uses channel/turn markers, find the channel tag immediately
-    # preceding the JSON array or object using a single regex (avoids ambiguous lists).
-    # Matches tags like <channel|> only when directly followed by optional whitespace and either '[' or '{'.
+    # for model uses channel/turn markers
     m_iter = re.finditer(r"<channel\|>(?=\s*[\[{])", text, flags=re.IGNORECASE)
     last_m = None
 
@@ -508,7 +484,7 @@ def extract_json_array(raw: str) -> Optional[list]:
                 except json.JSONDecodeError:
                     pass
         else:
-            # truncated: take remainder starting at the opening char and attempt repair
+            # if truncated: take remainder starting at the opening char and attempt repair
             candidate = text[start:]
             repaired = _repair_truncated_json(_sanitise_raw_json(candidate))
             try:
@@ -651,7 +627,7 @@ def _normalize_event(ev: dict, article_id: str) -> dict:
     # Infer year from date when missing / zero
     date = ev.get("date", "")
     if isinstance(date, str):
-        # Normalise any remaining YYYY placeholder to 0000
+        # normalize any remaining YYYY placeholder to 0000
         if date.startswith("YYYY"):
             date = "0000" + date[4:]
             ev["date"] = date
@@ -671,11 +647,8 @@ def _normalize_event(ev: dict, article_id: str) -> dict:
     return ev
 
 
-# ---------------------------------------------------------------------------
-# Flat CSV row builder
-# ---------------------------------------------------------------------------
 
-# All driver field names in order
+# Flat CSV row builder
 DRIVER_FIELDS = [
     "WeakGov", "FishPop", "EcoChngeOther", "GroundsLim", "ForeignFisher",
     "IllegalFishing", "IncrEfficiency", "OpsScales", "Markets",
@@ -712,10 +685,8 @@ def event_to_csv_row(ev: dict) -> dict:
         "issue_note": ev.get("issue_note", ""),
     }
 
-# ---------------------------------------------------------------------------
-# Stage 1 normaliser
-# ---------------------------------------------------------------------------
- 
+
+# Stage 1 normalizer
 def get_detections(entry: dict) -> list[dict]:
     """
     Return the detections list from a Stage 1 entry regardless of whether
@@ -732,16 +703,11 @@ def get_detections(entry: dict) -> list[dict]:
     )
     return []
  
- 
 def is_fde_positive(entry: dict) -> bool:
     """Return True if ANY detection record has contains_fde=True."""
     return any(d.get("contains_fde", False) for d in get_detections(entry))
 
-
-# ---------------------------------------------------------------------------
 # Main pipeline
-# ---------------------------------------------------------------------------
-
 def main():
     parser = argparse.ArgumentParser(
         description="Stage 2 FDE Extraction — Local Gemma 4 (HuggingFace Transformers)"
@@ -768,7 +734,7 @@ def main():
                         help="Process only the first N FDE-positive articles (for testing)")
     args = parser.parse_args()
 
-    # ── Paths ──────────────────────────────────────────────────────────────
+    #  Paths 
     stage1_path   = Path(args.stage1)
     articles_dir  = Path(args.articles)
     output_dir    = Path(args.output)
@@ -780,12 +746,12 @@ def main():
     failed_path  = output_dir / f"fde_failed_{run_ts}.jsonl"
     checkpoint_path = output_dir / f"fde_checkpoint_{run_ts}.json"
 
-    # ── Load Stage 1 output ────────────────────────────────────────────────
+    #  Load Stage 1 output 
     log.info(f"Loading Stage 1 output: {stage1_path}")
     with open(stage1_path) as f:
         stage1_data: list[dict] = json.load(f)
 
-    # Filter to articles where ANY detected entry has contains_fde=True
+    # Filter to articles where any detected entry has contains_fde=True
     fde_articles = [
         entry for entry in stage1_data
         if is_fde_positive(entry)
@@ -801,10 +767,10 @@ def main():
         fde_articles = fde_articles[: args.limit]
         log.info(f"  Limiting to first {args.limit} articles (--limit flag)")
 
-    # ── Load model ─────────────────────────────────────────────────────────
+    #  Load model
     pipe = load_model(args.model, args.device)
 
-    # ── Open output files ──────────────────────────────────────────────────
+    #  Open output files 
     jsonl_fh  = open(jsonl_path,  "w", encoding="utf-8")
     failed_fh = open(failed_path, "w", encoding="utf-8")
     csv_fh    = open(csv_path,    "w", newline="", encoding="utf-8")
@@ -814,7 +780,7 @@ def main():
     all_results: list[dict] = []
     pending_batch: list[dict] = []
 
-    # ── Per-article stats ──────────────────────────────────────────────────
+    #  Per-article stats 
     stats = {
         "total":        len(fde_articles),
         "processed":    0,
@@ -825,8 +791,7 @@ def main():
         "missing_file": 0,
     }
 
-    # ── Batch inference preparation ────────────────────────────────────────
-    # Accumulate articles, prompts, and metadata for batched inference
+    #  Batch inference
     batch_articles = []
     batch_prompts = []
     batch_metadata = []
@@ -931,14 +896,14 @@ def main():
         batch_prompts.clear()
         batch_metadata.clear()
 
-    # ── Main loop ──────────────────────────────────────────────────────────
+    #  Main loop 
     for idx, entry in enumerate(fde_articles, 1):
         article_id = entry["article_id"]
         text_file   = articles_dir / f"{article_id}.json"
 
         log.info(f"[{idx}/{stats['total']}] {article_id}")
 
-        # ── Load article text ──────────────────────────────────────────────
+        #  Load article text 
         if not text_file.exists():
             log.warning(f"  Article file not found: {text_file} — skipping")
             failed_fh.write(json.dumps({
@@ -952,7 +917,7 @@ def main():
 
         article_text = text_file.read_text(encoding="utf-8", errors="replace").strip()
 
-        # ── Accumulate for batch inference ─────────────────────────────────
+        #  Accumulate for batch inference
         t0 = time.time()
         prompt = build_prompt(pipe.tokenizer, article_id, article_text)
         batch_articles.append(article_id)
@@ -963,11 +928,11 @@ def main():
             "elapsed": time.time() - t0,
         })
 
-        # ── Process batch if we've accumulated enough articles ──────────────
+        #  Process batch if we've accumulated enough articles 
         if len(batch_articles) >= args.batch_size or idx == stats["total"]:
             _process_batch()
 
-    # ── Close files ────────────────────────────────────────────────────────
+    #  Close files 
     jsonl_fh.close()
     failed_fh.close()
     csv_fh.close()
@@ -975,7 +940,7 @@ def main():
     if all_results:
         _atomic_json_dump(checkpoint_path, all_results)
 
-    # ── Final summary ──────────────────────────────────────────────────────
+    #  Final summary 
     log.info("")
     log.info("=" * 60)
     log.info("PIPELINE COMPLETE")

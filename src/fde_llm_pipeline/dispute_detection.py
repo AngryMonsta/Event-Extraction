@@ -236,7 +236,7 @@ def run_detection(
     total_tokens = input_len + max_new_tokens
     if total_tokens > safe_total:
         # Per-request override: double the requested generation budget for this sample
-        # as requested. If this fails (OOM), skip this sample instead of retrying.
+        # if it causes OOM, skip this sample.
         attempt_tokens = safe_total + max_new_tokens
         print(f"  WARNING: sample total_tokens={total_tokens} > safe_total={safe_total}; trying increased max_new_tokens={attempt_tokens}", flush=True)
     else:
