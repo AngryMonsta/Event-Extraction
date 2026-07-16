@@ -569,6 +569,16 @@ def validate_events(raw_events: list, article_id: str) -> tuple[list[dict], list
     """
     valid, invalid = [], []
     for i, ev in enumerate(raw_events):
+        if not isinstance(ev, dict):
+            invalid.append({
+                "_validation_error": (
+                    f"Expected an event object at index {i}, got {type(ev).__name__}"
+                ),
+                "_source_article_id": article_id,
+                "_raw_value": ev,
+            })
+            continue
+
         # Inject article_id if model forgot it
         if "article_id" not in ev or not ev["article_id"]:
             ev["article_id"] = article_id
@@ -779,6 +789,7 @@ def main():
 
     all_results: list[dict] = []
     pending_batch: list[dict] = []
+    processed_ids: set[str] = set()
 
     #  Per-article stats 
     stats = {
@@ -790,6 +801,74 @@ def main():
         "val_errors":   0,
         "missing_file": 0,
     }
+
+    #  Resume from latest checkpoint if present 
+    existing_checkpoints = sorted(output_dir.glob("fde_checkpoint_*.json"))
+    if existing_checkpoints:
+        latest_checkpoint = existing_checkpoints[-1]
+        log.info(f"  Resuming from checkpoint: {latest_checkpoint.name}")
+        try:
+            with latest_checkpoint.open(encoding="utf-8") as fh:
+                saved_results = json.load(fh)
+        except Exception as exc:
+            log.warning(f"  Could not load checkpoint {latest_checkpoint.name}: {exc}")
+        else:
+            if isinstance(saved_results, list):
+                all_results = saved_results
+                stats["processed"] = len(saved_results)
+
+                for result in saved_results:
+                    if not isinstance(result, dict):
+                        continue
+
+                    article_id = result.get("article_id")
+                    if article_id:
+                        processed_ids.add(article_id)
+
+                    status = result.get("status")
+                    if status == "ok":
+                        valid_events = result.get("valid_events") or []
+                        invalid_events = result.get("invalid_events") or []
+                        stats["events_found"] += len(valid_events)
+                        stats["val_errors"] += len(invalid_events)
+
+                        for ev in valid_events:
+                            jsonl_fh.write(json.dumps(ev, ensure_ascii=False) + "\n")
+                            csv_writer.writerow(event_to_csv_row(ev))
+
+                        for ev in invalid_events:
+                            failed_fh.write(json.dumps({
+                                "article_id": article_id,
+                                "error":      "validation_error",
+                                "raw_event":  ev,
+                            }) + "\n")
+                    elif status == "no_events":
+                        stats["no_events"] += 1
+                    elif status == "json_parse_failed":
+                        stats["parse_failed"] += 1
+                        failed_fh.write(json.dumps({
+                            "article_id": article_id,
+                            "error":      "json_parse_failed",
+                            "raw_output": result.get("raw_output", ""),
+                        }) + "\n")
+
+                jsonl_fh.flush()
+                failed_fh.flush()
+                csv_fh.flush()
+
+                if processed_ids:
+                    fde_articles = [
+                        entry for entry in fde_articles
+                        if entry.get("article_id") not in processed_ids
+                    ]
+                    log.info(
+                        f"  {len(processed_ids)} articles already completed; "
+                        f"{len(fde_articles)} remaining"
+                    )
+            else:
+                log.warning(
+                    f"  Checkpoint {latest_checkpoint.name} is not a JSON array; starting fresh"
+                )
 
     #  Batch inference
     batch_articles = []
